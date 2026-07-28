@@ -12,7 +12,7 @@ import json
 REF_DIR = "reference_audios"
 os.makedirs(REF_DIR, exist_ok=True)
 
-MAX_TEXT_LENGTH = 500  # จำกัดจำนวนตัวอักษร
+MAX_CHUNK_SIZE = 300  # ขีดจำกัดตัวอักษรต่อ 1 chunk ก่อนส่งให้โมเดล
 SETTINGS_FILE = "settings.json"  # ไฟล์บันทึกการตั้งค่า
 MODEL_DIR = "models/omnivoice-thai"  # โฟลเดอร์เก็บโมเดล local
 ASR_MODEL_DIR = "models/whisper-large-v3-turbo"  # โฟลเดอร์เก็บโมเดล Whisper ASR local
@@ -29,6 +29,8 @@ DEFAULT_SETTINGS = {
     "guidance_scale": 2.0,
     "class_temperature": 0.0,
     "last_ref_audio": None,
+    "max_text_length": 10000,
+    "silence_duration": 0.3,
 }
 
 
@@ -49,13 +51,16 @@ def load_settings():
     return DEFAULT_SETTINGS.copy()
 
 
-def save_settings(speed, num_step, guidance_scale, class_temperature):
+def save_settings(speed, num_step, guidance_scale, class_temperature, max_text_length, silence_duration):
     """บันทึกการตั้งค่าลงไฟล์ JSON"""
     settings = {
         "speed": round(float(speed), 2),
         "num_step": int(num_step),
         "guidance_scale": round(float(guidance_scale), 2),
         "class_temperature": round(float(class_temperature), 2),
+        "last_ref_audio": load_settings().get("last_ref_audio"),
+        "max_text_length": int(max_text_length),
+        "silence_duration": round(float(silence_duration), 2),
     }
     try:
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
@@ -81,11 +86,13 @@ def save_last_ref_audio(filename):
 def reset_settings():
     """รีเซ็ตการตั้งค่ากลับเป็นค่าเริ่มต้น"""
     d = DEFAULT_SETTINGS
-    save_settings(d["speed"], d["num_step"], d["guidance_scale"], d["class_temperature"])
+    save_settings(d["speed"], d["num_step"], d["guidance_scale"], d["class_temperature"], d["max_text_length"], d["silence_duration"])
     return (
         d["speed"],
         d["num_step"],
         d["guidance_scale"],
         d["class_temperature"],
+        d["max_text_length"],
+        d["silence_duration"],
         "🔄 รีเซ็ตเป็นค่าเริ่มต้นเรียบร้อย!",
     )

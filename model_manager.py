@@ -9,6 +9,8 @@ import time
 import threading
 import torch
 import gradio as gr
+import numpy as np
+from pythainlp.tokenize import sent_tokenize, word_tokenize
 from huggingface_hub import snapshot_download
 
 from config import (
@@ -18,7 +20,7 @@ from config import (
     HF_AUDIO_TOK_REPO_ID,
     HF_ASR_REPO_ID,
     REF_DIR,
-    MAX_TEXT_LENGTH,
+    MAX_CHUNK_SIZE,
 )
 from audio_manager import validate_reference_audio
 from normalizer import normalize_thai_tts
@@ -157,6 +159,55 @@ def update_model_ui(progress=gr.Progress()):
     return res
 
 
+def split_text_for_tts(text, max_chunk_size=300):
+    """
+    หั่นข้อความยาวๆ อย่างชาญฉลาดโดยใช้ PyThaiNLP:
+    1. แยกตามการขึ้นบรรทัดใหม่
+    2. ใช้ sent_tokenize หาระยะประโยค
+    3. หากประโยคยาวเกิน max_chunk_size จะใช้ word_tokenize หั่นและสะสมคำ
+    """
+    paragraphs = text.split('\n')
+    chunks = []
+    
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue
+            
+        if len(para) <= max_chunk_size:
+            chunks.append(para)
+            continue
+            
+        sentences = sent_tokenize(para)
+        for sent in sentences:
+            sent = sent.strip()
+            if not sent:
+                continue
+                
+            if len(sent) <= max_chunk_size:
+                chunks.append(sent)
+            else:
+                words = word_tokenize(sent)
+                current_chunk = ""
+                for word in words:
+                    if len(current_chunk) + len(word) <= max_chunk_size:
+                        current_chunk += word
+                    else:
+                        if current_chunk.strip():
+                            chunks.append(current_chunk.strip())
+                        
+                        if len(word) > max_chunk_size:
+                            # หั่นด้วยตัวอักษรกรณีที่คำๆ เดียวมันยาวเกินจริงๆ
+                            for i in range(0, len(word), max_chunk_size):
+                                chunks.append(word[i:i+max_chunk_size])
+                            current_chunk = ""
+                        else:
+                            current_chunk = word
+                if current_chunk.strip():
+                    chunks.append(current_chunk.strip())
+                    
+    return chunks
+
 # ──────────────────────────────────────────────────────────────
 # Voice cloning (core generation)
 # ──────────────────────────────────────────────────────────────
@@ -168,6 +219,8 @@ def clone_voice(
     num_step,
     guidance_scale,
     class_temperature,
+    max_text_length,
+    silence_duration,
     progress=gr.Progress(),
 ):
     """ฟังก์ชันหลักสำหรับโคลนเสียงด้วย OmniVoice"""
@@ -181,8 +234,12 @@ def clone_voice(
         return None, f"❌ โมเดลยังไม่ถูกโหลด{err}"
     if not text or not text.strip():
         return None, "⚠️ กรุณาใส่ข้อความที่ต้องการให้พูด"
-    if len(text) > MAX_TEXT_LENGTH:
-        return None, f"⚠️ ข้อความยาวเกินไป ({len(text)}/{MAX_TEXT_LENGTH} ตัวอักษร)"
+    
+    # ดึงค่า max_text_length ออกมาใช้งาน (กรณีที่อาจจะยังไม่โหลด)
+    limit = int(max_text_length) if max_text_length else 10000
+    if len(text) > limit:
+        return None, f"⚠️ ข้อความยาวเกินไป ({len(text)}/{limit} ตัวอักษร)"
+        
     if not ref_filename:
         return None, "⚠️ กรุณาเลือกเสียงต้นฉบับจากคลัง"
 
@@ -201,8 +258,9 @@ def clone_voice(
         from omnivoice import OmniVoiceGenerationConfig
 
         # ── Normalize ──
-        progress(0.1, desc="กำลัง normalize ข้อความ...")
+        progress(0.1, desc="กำลัง normalize ข้อความและหั่นประโยค...")
         spoken_text = normalize_thai_tts(text)
+        chunks = split_text_for_tts(spoken_text, max_chunk_size=MAX_CHUNK_SIZE)
 
         # ── Ref text: ว่าง → ให้ OmniVoice ใช้ Whisper ภายในตัว ──
         effective_ref_text = ref_text if ref_text else None
@@ -218,25 +276,49 @@ def clone_voice(
             model.load_asr_model(model_name=asr_path)
 
         # ── Generate ──
-        progress(0.3, desc="กำลังสร้างเสียง...")
         gen_config = OmniVoiceGenerationConfig(
             num_step=int(num_step),
             guidance_scale=float(guidance_scale),
             class_temperature=float(class_temperature),
         )
-        generate_kwargs = dict(
-            text=spoken_text,
-            ref_audio=ref_path,
-            ref_text=effective_ref_text,
-            language="Thai",
-            generation_config=gen_config,
-        )
-        if speed and float(speed) != 1.0:
-            generate_kwargs["speed"] = float(speed)
+        
+        all_audio = []
+        sample_rate = 24000
+        silence_dur = float(silence_duration) if silence_duration is not None else 0.3
+        silence_samples = int(silence_dur * sample_rate)
+        silence_array = np.zeros(silence_samples, dtype=np.float32)
 
-        with generation_lock, torch.inference_mode():
-            audio_out = model.generate(**generate_kwargs)
-        final_audio = (24000, audio_out[0])
+        for i, chunk in enumerate(chunks):
+            progress((i + 1) / max(len(chunks), 1), desc=f"กำลังสร้างเสียงส่วนที่ {i+1}/{len(chunks)}...")
+            
+            generate_kwargs = dict(
+                text=chunk,
+                ref_audio=ref_path,
+                ref_text=effective_ref_text,
+                language="Thai",
+                generation_config=gen_config,
+            )
+            if speed and float(speed) != 1.0:
+                generate_kwargs["speed"] = float(speed)
+
+            with generation_lock, torch.inference_mode():
+                audio_out = model.generate(**generate_kwargs)
+                
+            chunk_audio = audio_out[0]
+            if isinstance(chunk_audio, torch.Tensor):
+                chunk_audio = chunk_audio.cpu().numpy()
+                
+            all_audio.append(chunk_audio)
+            
+            # เติมช่องว่าง (silence) ระหว่างประโยค ยกเว้น chunk สุดท้าย
+            if i < len(chunks) - 1 and silence_dur > 0:
+                all_audio.append(silence_array)
+
+        if len(all_audio) == 0:
+            return None, "⚠️ ไม่มีข้อความให้สร้างเสียง"
+
+        concatenated_audio = np.concatenate(all_audio, axis=0)
+        final_audio = (sample_rate, concatenated_audio)
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

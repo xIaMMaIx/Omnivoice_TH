@@ -11,7 +11,7 @@ import gradio as gr
 os.environ["GRADIO_ANALYTICS_ENABLED"] = "False"
 
 # นำเข้าฟังก์ชันและค่าจากไฟล์โมดูลย่อย
-from config import load_settings, save_settings, reset_settings, save_last_ref_audio, MAX_TEXT_LENGTH
+from config import load_settings, save_settings, reset_settings, save_last_ref_audio
 from normalizer import (
     NON_VERBAL_TAGS,
     EXAMPLE_TEXTS,
@@ -76,7 +76,7 @@ with gr.Blocks(title="OmniVoice Thai — เครื่องมือโคล
                         label="ข้อความที่ต้องการให้พูด",
                         lines=4,
                         max_lines=10,
-                        max_length=MAX_TEXT_LENGTH,
+                        max_length=current_settings.get("max_text_length", 10000),
                         placeholder="พิมพ์ข้อความภาษาไทยที่นี่...\nเช่น สวัสดีครับ วันนี้อากาศดีมาก",
                         elem_classes="panel-card",
                     )
@@ -203,6 +203,24 @@ with gr.Blocks(title="OmniVoice Thai — เครื่องมือโคล
                         value=current_settings["speed"],
                         step=0.1,
                         info="1.0 = ปกติ, ต่ำกว่า = ช้าลง, สูงกว่า = เร็วขึ้น",
+                    )
+                    
+                    silence_slider = gr.Slider(
+                        label="⏱️ ระยะเวลาเว้นวรรคประโยค (วินาที)",
+                        minimum=0.0,
+                        maximum=2.0,
+                        value=current_settings.get("silence_duration", 0.3),
+                        step=0.1,
+                        info="ความเงียบระหว่างประโยคเมื่อข้อความยาวถูกตัดอัตโนมัติ",
+                    )
+                    
+                    max_text_length_input = gr.Number(
+                        label="📏 ขีดจำกัดตัวอักษรสูงสุด",
+                        value=current_settings.get("max_text_length", 10000),
+                        minimum=500,
+                        maximum=50000,
+                        step=500,
+                        info="ตั้งค่าจำกัดความยาวของข้อความที่จะสร้าง",
                     )
 
                 with gr.Column(scale=1, min_width=350):
@@ -501,6 +519,8 @@ with gr.Blocks(title="OmniVoice Thai — เครื่องมือโคล
             num_step_slider,
             guidance_slider,
             temperature_slider,
+            max_text_length_input,
+            silence_slider,
         ],
         outputs=[output_audio, status_msg],
     )
@@ -521,6 +541,8 @@ with gr.Blocks(title="OmniVoice Thai — เครื่องมือโคล
             num_step_slider,
             guidance_slider,
             temperature_slider,
+            max_text_length_input,
+            silence_slider,
         ],
         outputs=settings_status,
     )
@@ -531,6 +553,8 @@ with gr.Blocks(title="OmniVoice Thai — เครื่องมือโคล
             num_step_slider,
             guidance_slider,
             temperature_slider,
+            max_text_length_input,
+            silence_slider,
             settings_status,
         ],
     )
