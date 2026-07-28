@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+temp/
+models/
+.agents/
+reference_audios/
+*.wav
+*.mp3
+*.log
+en_read_cache.json

@@ -1,0 +1,7 @@
+{
+  "speed": 1.0,
+  "num_step": 32,
+  "guidance_scale": 2.0,
+  "class_temperature": 0.0,
+  "last_ref_audio": "voice_sod_trim.WAV"
+}
