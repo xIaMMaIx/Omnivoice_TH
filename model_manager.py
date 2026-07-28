@@ -134,6 +134,17 @@ def start_background_loading():
     """เริ่มโหลดโมเดลเบื้องหลังเพื่อให้ UI เปิดได้ทันที"""
     threading.Thread(target=_load_model, daemon=True).start()
 
+def get_model_load_status():
+    """เช็คสถานะการโหลดโมเดลสำหรับ UI Poll"""
+    global model, model_loading, model_error
+    if model_error:
+        return f"❌ ระบบพบข้อผิดพลาดในการโหลดโมเดล: {model_error}", gr.Timer(active=False)
+    if model_loading:
+        return "⏳ **สถานะ:** กำลังดาวน์โหลดหรือโหลดโมเดล AI เบื้องหลัง... (อาจใช้เวลา 1-3 นาทีในครั้งแรก)", gr.Timer(active=True)
+    if model is not None:
+        return "✅ **สถานะ:** โมเดลพร้อมใช้งานแล้ว!", gr.Timer(active=False)
+    return "", gr.Timer(active=False)
+
 
 # ──────────────────────────────────────────────────────────────
 # UI callbacks

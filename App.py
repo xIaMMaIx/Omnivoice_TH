@@ -35,6 +35,7 @@ from model_manager import (
     clone_voice,
     update_model_ui,
     transcribe_audio_file,
+    get_model_load_status,
 )
 from ui_theme import custom_theme, custom_css, dark_mode_js
 
@@ -56,6 +57,9 @@ with gr.Blocks(title="OmniVoice Thai — เครื่องมือโคล
         "เครื่องมือโคลนเสียงภาษาไทย — ใส่ข้อความ เลือกเสียงต้นฉบับ แล้วสร้างเสียงพูดได้ทันที",
         elem_id="app-header",
     )
+
+    global_status = gr.Markdown("⏳ **สถานะ:** กำลังเตรียมความพร้อมระบบ...", elem_id="global-status")
+    model_timer = gr.Timer(value=2, active=True)
 
     # ===== Tabs =====
     with gr.Tabs():
@@ -457,6 +461,12 @@ with gr.Blocks(title="OmniVoice Thai — เครื่องมือโคล
     # ╔══════════════════════════════════════════════════════════╗
     # ║  Event Handlers                                         ║
     # ╚══════════════════════════════════════════════════════════╝
+
+    # --- Global Timer ---
+    model_timer.tick(
+        fn=get_model_load_status,
+        outputs=[global_status, model_timer],
+    )
 
     # --- Tab 1: โคลนเสียง ---
 
