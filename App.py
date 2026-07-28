@@ -11,7 +11,8 @@ import gradio as gr
 os.environ["GRADIO_ANALYTICS_ENABLED"] = "False"
 
 # นำเข้าฟังก์ชันและค่าจากไฟล์โมดูลย่อย
-from config import load_settings, save_settings, reset_settings, save_last_ref_audio
+import base64
+from config import load_settings, save_settings, reset_settings, save_last_ref_audio, OUTPUT_DIR
 from normalizer import (
     NON_VERBAL_TAGS,
     EXAMPLE_TEXTS,
@@ -44,6 +45,59 @@ current_settings = load_settings()
 
 # เริ่มโหลดโมเดลเบื้องหลังทันที
 start_background_loading()
+
+# จัดการไฟล์ Output ตอนเริ่มแอป
+if not current_settings.get("keep_output_files", False):
+    if os.path.exists(OUTPUT_DIR):
+        for f in os.listdir(OUTPUT_DIR):
+            file_path = os.path.join(OUTPUT_DIR, f)
+            if os.path.isfile(file_path):
+                try:
+                    os.remove(file_path)
+                except:
+                    pass
+
+def get_output_files():
+    if not os.path.exists(OUTPUT_DIR):
+        return []
+    files = [f for f in os.listdir(OUTPUT_DIR) if f.lower().endswith('.wav')]
+    files.sort(reverse=True)
+    return [os.path.join(OUTPUT_DIR, f) for f in files]
+
+def generate_history_html(files=None):
+    if files is None:
+        files = get_output_files()
+    if not files:
+        return "<div style='padding: 20px; text-align: center; color: gray;'>ไม่มีประวัติไฟล์เสียง</div>"
+    
+    html = '<div style="max-height: 400px; overflow-y: auto; padding: 10px; border: 1px solid var(--border-color-primary, #ddd); border-radius: 8px; background: var(--background-fill-secondary, transparent);">'
+    html += '''
+    <div style="margin-bottom: 10px; padding: 5px;">
+        <input type="checkbox" id="chk-all" style="cursor: pointer; width: 16px; height: 16px;" onchange="document.querySelectorAll('.history-chk').forEach(el => el.checked = this.checked)">
+        <label for="chk-all" style="cursor: pointer; font-weight: bold; margin-left: 5px;">เลือกทั้งหมด</label>
+    </div>
+    <hr style="border-color: var(--border-color-primary, #ddd); margin-bottom: 10px;">
+    '''
+    for f in files:
+        filename = os.path.basename(f)
+        
+        # ใช้ Base64 เพื่อให้เล่นเสียงได้ชัวร์ 100% ไม่ติดปัญหา Path หรือ CORS บน Windows
+        try:
+            with open(f, "rb") as wav_file:
+                b64_data = base64.b64encode(wav_file.read()).decode('utf-8')
+            file_url = f"data:audio/wav;base64,{b64_data}"
+        except Exception:
+            file_url = ""
+            
+        html += f'''
+        <div style="display: flex; align-items: center; margin-bottom: 8px; padding: 8px; background: var(--background-fill-primary, rgba(128,128,128,0.05)); border-radius: 6px; border: 1px solid var(--border-color-primary, #eee);">
+            <input type="checkbox" class="history-chk" value="{os.path.abspath(f)}" style="cursor: pointer; margin-right: 12px; width: 16px; height: 16px;">
+            <span style="flex-grow: 1; font-family: monospace; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{filename}</span>
+            <audio controls src="{file_url}" style="height: 32px; width: 220px;"></audio>
+        </div>
+        '''
+    html += '</div>'
+    return html
 
 
 # ╔══════════════════════════════════════════════════════════════╗
@@ -183,6 +237,20 @@ with gr.Blocks(title="OmniVoice Thai — เครื่องมือโคล
                         lines=2,
                         elem_id="status-msg",
                     )
+                    
+                    gr.Markdown("---")
+                    gr.Markdown("#### 📁 ประวัติไฟล์เสียงที่สร้าง")
+                    
+                    output_history_html = gr.HTML(
+                        value=generate_history_html()
+                    )
+                    
+                    with gr.Row():
+                        btn_download_selected = gr.Button("⬇️ ดาวน์โหลดไฟล์ที่เลือก", variant="secondary")
+                        btn_delete_selected = gr.Button("🗑️ ลบไฟล์ที่เลือก", variant="stop")
+                    
+                    dummy_input = gr.Textbox(visible=False)
+                    download_files = gr.File(label="ไฟล์ที่พร้อมดาวน์โหลด", interactive=False, visible=False)
 
         # ──────────────────────────────────────────────────────
         # Tab 2: ตั้งค่า (แยกออกมาให้ Tab 1 กระชับ)
@@ -221,6 +289,11 @@ with gr.Blocks(title="OmniVoice Thai — เครื่องมือโคล
                         maximum=50000,
                         step=500,
                         info="ตั้งค่าจำกัดความยาวของข้อความที่จะสร้าง",
+                    )
+                    
+                    keep_output_checkbox = gr.Checkbox(
+                        label="💾 เก็บไฟล์เสียงในโฟลเดอร์ output ถาวร (ถ้าไม่เลือกจะลบเมื่อเปิดแอปใหม่)",
+                        value=current_settings.get("keep_output_files", False),
                     )
 
                 with gr.Column(scale=1, min_width=350):
@@ -509,8 +582,15 @@ with gr.Blocks(title="OmniVoice Thai — เครื่องมือโคล
     )
 
     # กดโคลนเสียง
+    def clone_and_update(text, ref_filename, ref_text_input, speed, num_step, guidance_scale, class_temperature, max_text_length, silence_duration, progress=gr.Progress()):
+        audio, msg = clone_voice(
+            text, ref_filename, ref_text_input, speed, num_step, guidance_scale, class_temperature, max_text_length, silence_duration, progress=progress
+        )
+        html = generate_history_html()
+        return audio, msg, html
+
     btn_clone.click(
-        fn=clone_voice,
+        fn=clone_and_update,
         inputs=[
             input_text,
             ref_dropdown,
@@ -522,7 +602,44 @@ with gr.Blocks(title="OmniVoice Thai — เครื่องมือโคล
             max_text_length_input,
             silence_slider,
         ],
-        outputs=[output_audio, status_msg],
+        outputs=[output_audio, status_msg, output_history_html],
+    )
+
+    # ปุ่มดาวน์โหลด
+    def prepare_download(paths_str):
+        if not paths_str:
+            return gr.update(value=None, visible=False)
+        paths = [p.strip() for p in paths_str.split(',') if p.strip()]
+        return gr.update(value=paths, visible=True)
+
+    btn_download_selected.click(
+        fn=prepare_download,
+        inputs=[dummy_input],
+        outputs=[download_files],
+        js="(x) => { let selected = Array.from(document.querySelectorAll('.history-chk:checked')).map(el => el.value); if(selected.length === 0){ alert('กรุณาเลือกไฟล์ที่ต้องการดาวน์โหลดก่อน'); throw new Error('No files selected'); } return [selected.join(',')]; }"
+    )
+
+    # ปุ่มลบ
+    def delete_selected_files(paths_str):
+        if not paths_str:
+            return generate_history_html(), "⚠️ ยกเลิกการลบ หรือไม่ได้เลือกไฟล์"
+        paths = [p.strip() for p in paths_str.split(',') if p.strip()]
+        count = 0
+        for p in paths:
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
+                    count += 1
+            except:
+                pass
+        html = generate_history_html()
+        return html, f"🗑️ ลบไฟล์เรียบร้อยแล้ว {count} ไฟล์"
+
+    btn_delete_selected.click(
+        fn=delete_selected_files,
+        inputs=[dummy_input],
+        outputs=[output_history_html, status_msg],
+        js="(x) => { let selected = Array.from(document.querySelectorAll('.history-chk:checked')).map(el => el.value); if(selected.length === 0){ alert('กรุณาเลือกไฟล์ที่ต้องการลบก่อน'); throw new Error('No files selected'); } if(!confirm('คุณแน่ใจหรือไม่ว่าต้องการลบไฟล์ที่เลือกทั้งหมด ' + selected.length + ' ไฟล์?')) throw new Error('Canceled'); return [selected.join(',')]; }"
     )
 
     # --- Non-Verbal Tag Buttons ---
@@ -543,6 +660,7 @@ with gr.Blocks(title="OmniVoice Thai — เครื่องมือโคล
             temperature_slider,
             max_text_length_input,
             silence_slider,
+            keep_output_checkbox,
         ],
         outputs=settings_status,
     )
@@ -555,6 +673,7 @@ with gr.Blocks(title="OmniVoice Thai — เครื่องมือโคล
             temperature_slider,
             max_text_length_input,
             silence_slider,
+            keep_output_checkbox,
             settings_status,
         ],
     )
@@ -680,4 +799,5 @@ if __name__ == "__main__":
         theme=custom_theme,
         css=custom_css,
         js=dark_mode_js,
+        allowed_paths=[os.path.abspath(OUTPUT_DIR)],
     )

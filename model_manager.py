@@ -10,6 +10,7 @@ import threading
 import torch
 import gradio as gr
 import numpy as np
+import soundfile as sf
 from pythainlp.tokenize import sent_tokenize, word_tokenize
 from huggingface_hub import snapshot_download
 
@@ -20,6 +21,7 @@ from config import (
     HF_AUDIO_TOK_REPO_ID,
     HF_ASR_REPO_ID,
     REF_DIR,
+    OUTPUT_DIR,
     MAX_CHUNK_SIZE,
 )
 from audio_manager import validate_reference_audio
@@ -318,7 +320,10 @@ def clone_voice(
             return None, "⚠️ ไม่มีข้อความให้สร้างเสียง"
 
         concatenated_audio = np.concatenate(all_audio, axis=0)
-        final_audio = (sample_rate, concatenated_audio)
+        output_filename = f"output_{time.strftime('%Y%m%d_%H%M%S')}.wav"
+        output_path = os.path.join(OUTPUT_DIR, output_filename)
+        sf.write(output_path, concatenated_audio, sample_rate, subtype="PCM_16")
+        final_audio = output_path
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

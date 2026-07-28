@@ -11,6 +11,8 @@ import json
 # ──────────────────────────────────────────────────────────────
 REF_DIR = "reference_audios"
 os.makedirs(REF_DIR, exist_ok=True)
+OUTPUT_DIR = "output"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 MAX_CHUNK_SIZE = 300  # ขีดจำกัดตัวอักษรต่อ 1 chunk ก่อนส่งให้โมเดล
 SETTINGS_FILE = "settings.json"  # ไฟล์บันทึกการตั้งค่า
@@ -31,6 +33,7 @@ DEFAULT_SETTINGS = {
     "last_ref_audio": None,
     "max_text_length": 10000,
     "silence_duration": 0.3,
+    "keep_output_files": False,
 }
 
 
@@ -51,7 +54,7 @@ def load_settings():
     return DEFAULT_SETTINGS.copy()
 
 
-def save_settings(speed, num_step, guidance_scale, class_temperature, max_text_length, silence_duration):
+def save_settings(speed, num_step, guidance_scale, class_temperature, max_text_length, silence_duration, keep_output_files=False):
     """บันทึกการตั้งค่าลงไฟล์ JSON"""
     settings = {
         "speed": round(float(speed), 2),
@@ -61,6 +64,7 @@ def save_settings(speed, num_step, guidance_scale, class_temperature, max_text_l
         "last_ref_audio": load_settings().get("last_ref_audio"),
         "max_text_length": int(max_text_length),
         "silence_duration": round(float(silence_duration), 2),
+        "keep_output_files": bool(keep_output_files),
     }
     try:
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
@@ -86,7 +90,7 @@ def save_last_ref_audio(filename):
 def reset_settings():
     """รีเซ็ตการตั้งค่ากลับเป็นค่าเริ่มต้น"""
     d = DEFAULT_SETTINGS
-    save_settings(d["speed"], d["num_step"], d["guidance_scale"], d["class_temperature"], d["max_text_length"], d["silence_duration"])
+    save_settings(d["speed"], d["num_step"], d["guidance_scale"], d["class_temperature"], d["max_text_length"], d["silence_duration"], d["keep_output_files"])
     return (
         d["speed"],
         d["num_step"],
@@ -94,5 +98,6 @@ def reset_settings():
         d["class_temperature"],
         d["max_text_length"],
         d["silence_duration"],
+        d["keep_output_files"],
         "🔄 รีเซ็ตเป็นค่าเริ่มต้นเรียบร้อย!",
     )
