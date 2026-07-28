@@ -1,5 +1,7 @@
 # 🎙️ OmniVoice Thai
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/xIaMMaIx/Omnivoice_TH/blob/main/Omnivoice_Colab.ipynb)
+
 OmniVoice Thai เป็นแอปพลิเคชันบนเว็บ (พัฒนาด้วย Gradio) สำหรับทำ Voice Cloning หรือการโคลนเสียงภาษาไทยแบบออฟไลน์ คุณสามารถใส่ข้อความภาษาไทย เลือกเสียงต้นฉบับ และสร้างเสียงพูดที่เลียนแบบน้ำเสียงต้นฉบับได้อย่างรวดเร็ว
 
 ## ✨ ฟีเจอร์หลัก (Features)
