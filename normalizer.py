@@ -7,7 +7,7 @@ import re
 from pythainlp.tokenize import word_tokenize
 from pythainlp.util import normalize as thai_normalize
 from pythainlp.util import num_to_thaiword, bahttext
-from config import MAX_TEXT_LENGTH
+from config import load_settings
 from english_reader import normalize_english_text
 
 THAI_MONTHS = [
@@ -260,9 +260,10 @@ def count_characters(text):
     if not text:
         return "0 ตัวอักษร"
     count = len(text)
-    if count > MAX_TEXT_LENGTH:
-        return f"⚠️ {count}/{MAX_TEXT_LENGTH} ตัวอักษร (เกินขีดจำกัด!)"
-    return f"📝 {count}/{MAX_TEXT_LENGTH} ตัวอักษร"
+    limit = load_settings().get("max_text_length", 10000)
+    if count > limit:
+        return f"⚠️ {count}/{limit} ตัวอักษร (เกินขีดจำกัด!)"
+    return f"📝 {count}/{limit} ตัวอักษร"
 
 
 def preview_normalized(text):
