@@ -4,7 +4,14 @@ App.py — ไฟล์หลักสำหรับเปิดใช้งา
 """
 
 import os
+import sys
+import asyncio
 import socket
+
+# Fix for [WinError 10054] Exception in callback _ProactorBasePipeTransport._call_connection_lost
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 import gradio as gr
 
 # ปิด Analytics และการเชื่อมต่อออนไลน์ที่ไม่จำเป็นของ Gradio
@@ -767,6 +774,41 @@ with gr.Blocks(title="OmniVoice Thai — เครื่องมือโคล
     btn_refresh.click(
         fn=refresh_and_sync,
         outputs=[ref_dropdown, manage_dropdown, manage_status],
+    )
+
+    # โหลดค่าล่าสุดจากไฟล์ settings.json เมื่อผู้ใช้รีเฟรชหรือเปิดหน้าเว็บใหม่
+    def on_ui_load():
+        s = load_settings()
+        # Ensure dropdown has the item
+        choices = get_audio_list()
+        last_ref = s.get("last_ref_audio")
+        if last_ref not in choices:
+            last_ref = None
+            
+        return (
+            s["speed"],
+            s["num_step"],
+            s["guidance_scale"],
+            s["class_temperature"],
+            s["max_text_length"],
+            s.get("silence_duration", 0.3),
+            s.get("keep_output_files", False),
+            gr.update(choices=choices, value=last_ref)
+        )
+
+    demo.load(
+        fn=on_ui_load,
+        inputs=[],
+        outputs=[
+            speed_slider,
+            num_step_slider,
+            guidance_slider,
+            temperature_slider,
+            max_text_length_input,
+            silence_slider,
+            keep_output_checkbox,
+            ref_dropdown
+        ]
     )
 
 

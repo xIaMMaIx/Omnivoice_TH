@@ -233,6 +233,13 @@ def normalize_thai_tts(text):
     if not text:
         return ""
 
+    # ลบช่องว่างที่เป็นเพียง padding (แค่ 1 เคาะ) ระหว่างภาษาไทยกับตัวเลข/ภาษาอังกฤษ
+    # หากผู้ใช้พิมพ์เว้นวรรค 2 เคาะขึ้นไป จะยังคงเหลือช่องว่างไว้เพื่อแปลงเป็น , ในภายหลัง
+    text = re.sub(r'(?<=[ก-๙])[ ](?=[a-zA-Z0-9])', '', text)
+    text = re.sub(r'(?<=[a-zA-Z0-9])[ ](?=[ก-๙])', '', text)
+    text = re.sub(r'(?<=[a-zA-Z])[ ](?=[0-9])', '', text)
+    text = re.sub(r'(?<=[0-9])[ ](?=[a-zA-Z])', '', text)
+
     text = thai_normalize(text)
     text = normalize_dates(text)
     text = normalize_currency(text)
@@ -252,7 +259,10 @@ def normalize_thai_tts(text):
         else:
             result.append(token)
 
-    return "".join(result)
+    final_text = "".join(result)
+    # แปลงช่องว่าง (space) เป็นเครื่องหมาย comma (,) เพื่อให้ TTS เว้นวรรคการอ่านได้ดีขึ้น
+    final_text = re.sub(r'\s+', ',', final_text)
+    return final_text
 
 
 def count_characters(text):
